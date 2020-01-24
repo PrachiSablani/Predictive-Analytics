@@ -1,0 +1,437 @@
+** In this project I will use the 'flights' and 'titanic' datasets. The flights dataset contains information on flight delays and weather. Titanic text file contains data about the survival of passengers aboard the Titanic. **
+```{r, show='hide'}
+# Load standard libraries
+library(tidyverse)
+library(gridExtra)
+library(MASS)
+library(pROC)
+library(arm)
+library(dplyr)
+library(Metrics)
+library("nycflights13")
+library("mfx")
+```
+## Predictions with a continuous output variable
+
+### Loading the flights dataset and joining it to the weather data based on the departure location, date, and hour of the flight. Excluding data entries which cannot be joined to weather data. Copying the joined data so we can refer to it later. 
+```{r}
+#Loading flights data
+data("flights")
+
+#Loading weather data
+data("weather")
+
+#Creating a vector of variables used to join the flights and weather data
+mergeCols <- c("time_hour", "origin")
+
+#Joining the flights data with weather data based on departure location, date, and hour of the flight
+inner <- inner_join(flights, weather, by = mergeCols)
+
+#Check joined data
+head(inner,3)
+
+#Make a copy of joined data for future reference
+joineddata <- inner
+```
+
+### From the joined data, keeping only the following columns as we build our first model: departure delay, origin, departure time, temperature, wind speed, precipitation, and visibility. Omitting observations that do not have all of these variables present.
+```{r}
+#Selecting relevant columns
+newdata <- dplyr::select(joineddata, dep_delay, origin, dep_time, temp, wind_speed,precip,visib)
+
+#Omitting observations that do not have all of these variables present
+alldata <- na.omit(newdata)
+```
+
+### Splitting the data into a training and test set based on an 80-20 split. In other words, 80% of the observations will be in the training set and 20% will be in the test set.
+
+```{r}
+#Setting seed
+set.seed(123)
+
+#Creating training data sample
+train_index = sample(seq_len(nrow(alldata)), 0.8*nrow(alldata))
+
+#Creating training data
+train = alldata[train_index, ]
+
+#Creating test data
+test = alldata[-train_index, ]
+```
+
+### Building a linear regression model to predict departure delay using the subset of variables indicated above. Checking RMSE of the training set and test set? 
+```{r}
+#Building linear regression model to predict departure delay
+m <- lm(dep_delay ~ origin + visib + precip, data = train)
+
+#Getting predicted departure delay on training data
+pred_trained <- predict(m,train)
+
+#Getting RMSE of training data
+rmse(train$dep_delay,pred_trained)
+
+#Getting predicted departure delay on test data
+pred_test <- predict(m,test)
+
+#Getting RMSE of test data
+rmse(test$dep_delay,pred_test)
+```
+RMSE of the trained data is 39.91978 and RMSE of the test data is 39.94715<br>
+The RMSE is higher for test data and this is the expected behavior as the model is created using trained data, so ideally RMSE for trained data should be less than the RMSE of test data.<br>
+
+As the complexity(flexibiity) of model increases, the RMSE of trained data will further decrease and the model will better fit to the trained data and its RMSE will decrease.<br>
+
+In many cases, RMSE of test data is higher than the RMSE of training data is because of the overfitting of the model. In those cases, we can say that model performed worse during testing than training.
+
+
+### Now, improving upon these prediction results by including additional variables in the model. Keeping at least 95% of original data (i.e. about 320K observations across both the training and test datasets). Using the same observations as above for the training and test sets (i.e. keeping the same rows but adding different variables/columns). Checking if we improve upon the training RMSE? Once we have a model that adequately improves the training RMSE, does the model improve the test RMSE? Which variables are included in the model?
+```{r}
+#Including additional varibles
+newdata <- dplyr::select(joineddata, dep_delay, origin,dest, dep_time, temp, wind_speed,precip,visib,carrier, wind_speed,dewp)
+
+#Omitting observations that do not have all of these variables present
+alldata <- na.omit(newdata)
+
+#Setting seed
+set.seed(120)
+
+#Creating trained data sample
+train_index1 = sample(seq_len(nrow(alldata)), 0.8*nrow(alldata))
+
+#Creating training data
+train1 = alldata[train_index1, ]
+
+#Creating test data
+test1 = alldata[-train_index1, ]
+
+#Building first linear regression model to predict departure delay
+m1 <- lm(dep_delay ~ origin + dewp + precip, data = train1)
+
+#Getting predicted departure delay on training data
+pred_trained1 <- predict(m1,train1)
+
+#Getting RMSE of training data
+rmse(train1$dep_delay,pred_trained1)
+
+#Getting predicted departure delay on test data
+pred_test1 <- predict(m1,test1)
+
+#Getting RMSE of test data
+rmse(test1$dep_delay,pred_test1)
+
+#Building second linear regression model to predict departure delay
+m2 <- lm(dep_delay ~ origin + temp + wind_speed + precip + visib + carrier + dewp, data = train1)
+
+#Getting predicted departure delay on training data
+pred_trained2 <- predict(m2,train1)
+
+#Getting RMSE of training data
+rmse(train1$dep_delay,pred_trained2)
+
+#Getting predicted departure delay on test data
+pred_test2 <- predict(m2,test1)
+
+#Getting RMSE of test data
+rmse(test1$dep_delay,pred_test2)
+
+#Building third linear regression model to predict departure delay
+m3 <- lm(dep_delay ~ origin + dewp + visib + wind_speed, data = train1)
+
+#Getting predicted departure delay on training data
+pred_trained3 <- predict(m3,train1)
+
+#Getting RMSE of training data
+rmse(train1$dep_delay,pred_trained3)
+
+#Getting predicted departure delay on test data
+pred_test3 <- predict(m3,test1)
+
+#Getting RMSE of test data
+rmse(test1$dep_delay,pred_test3)
+```
+After testing on above three models, it can be observed that the RMSE of training data has improved for all the three models.<br>
+
+The second model has the lowest RMSE value for training data i.e. 39.29808. The test RMSE for the same model has also reduced from 39.94715 to 39.90408, which is not a big difference.<br>
+Thus, the performance on test data has not improved significantly.<br>
+
+The variables included in this model are origin, temperature, wind speed, precipitation, visibility, carrier and dewpoint. 
+
+** ## Predictions with a categorical output (classification) **
+
+### Loading the titanic data. Splitting the data into a training and test set based on an 80-20 split. In other words, 80% of the observations will be in the training set and 20% will be in the test set.
+
+The following code constructs the training and test sets.
+
+```{r}
+#Loading the titanic data
+titanic_data <- read.csv("titanic.csv.bz2")
+
+#Setting seed
+set.seed(123)
+
+#Creating sample for training data
+train_index_titanic = sample(seq_len(nrow(titanic_data)), 0.8*nrow(titanic_data))
+
+#Creating training data
+train_titanic = titanic_data[train_index_titanic, ]
+
+#Creating test data
+test_titanic = titanic_data[-train_index_titanic, ]
+```
+
+In this problem set our goal is to predict the survival of passengers. First, let's train a logistic regression model for survival that controls for the socioeconomic status of the passenger. 
+
+### Fitting the model described above using the 'glm' function in R. 
+```{r}
+#Creating logistic regression model to predict survival rate
+m2 <- glm(survived ~ pclass, data=train_titanic, family = binomial())
+```
+
+
+### What can we conclude based on this model about the probability of survival for lower class passengers?
+
+```{r}
+#Checking marginal effect
+mfx::logitmfx(survived ~ pclass, data=train_titanic)
+```
+From this model, it can be concluded that as the value of pclass increases by 1 unit, survival of passengers will decrease by 19.1%
+Hence, probability of survival of lower class is 39.2% less than probability of survival of first class. 
+
+### Predicting the survival of passengers for each observation in the test set using the model fit in Problem 2. Saving these predictions as 'yhat'
+```{r}
+#Predicting survival of passengers on test data
+yhat <- predict(m2, newdata = test_titanic, type="response")
+```
+
+
+### Using a threshold of 0.5 to classify predictions. 
+What is the number of false positives on the test data?
+
+```{r}
+#Using threshold of 0.5 to classify predictions
+p1 <- yhat > 0.5
+
+#Creating confusion matrix to check false positive
+table(test_titanic$survived, p1)
+```
+The number of false positives on the test data is 64. This means that on the test data for 64 cases, this model predicts the passengers as survived when the passenger actually didn't survive.
+
+### Using the 'pROC::roc' function, plotting the ROC curve for this model.
+```{r}
+#Plotting ROC curve 
+roc1 <- roc(survived ~ pclass, train_titanic)
+roc1
+plot(roc1, print.auc=TRUE)
+```
+
+Area under the curve is 0.6744 which means there is approximately 67% chance that model will correctly predict the class of the passenger in the titanic data.  
+
+### Suppose we use the data to construct a new predictor variable based on a passenger's listed title (i.e. Mr., Mrs., Miss., Master). This might be an interesting variable to help predict passenger survival.
+
+```{r}
+# Making a feature that includes more titles
+getTitles <- function(name) {
+  for (title in c("Master", "Miss", "Mrs.", "Mr.")) {
+    if (grepl(title, name)) {
+      return(title)
+    }
+  }
+  return("Nothing")
+}
+
+#Fetching titles for all the passenger names
+abc <- sapply(titanic_data$name, getTitles)
+
+#Creating a new column as "titles" in titanic data
+titanic_data$titles <- abc
+
+#Check the new column in the data
+head(titanic_data,3)
+
+```
+With titles, it will be interesting to help predict passenger survival because women and children were given more priority over men to board the lifeboats, so their survival rate might be high.
+
+### Fitting a second logistic regression model including this new feature. Checking the improvement the model? 
+```{r}
+#Setting seed
+set.seed(123)
+
+#Sample for training data
+newtrain_index_titanic = sample(seq_len(nrow(titanic_data)), 0.8*nrow(titanic_data))
+
+#Create training adta
+newtrain_titanic = titanic_data[newtrain_index_titanic, ]
+
+#Creating test data
+newtest_titanic = titanic_data[-newtrain_index_titanic, ]
+
+#Create a new logitic regression model
+m3 <- glm(survived ~ pclass + titles, data=newtrain_titanic, family=binomial())
+
+#Summary of model
+summary(m3)
+
+```
+Since AIC of the new model has reduced from 1280.2 to 987.21, so new model has improved. 
+
+### Checking the overall fit of this model. Exploring when misclassification occurs, and accuracy.
+
+```{r}
+#Predicting the survival of passengers for trained data
+a1 <- predict(m3, newdata = newtrain_titanic, type="response")
+
+#Setting threshold as 0.5
+p0 <- a1 > 0.5
+
+#Create confusion matrix
+table(newtrain_titanic$survived, p0)
+
+#Calculating accuracy of the model
+(540+282)/nrow(newtrain_titanic)
+
+pred <- ifelse(p0 > 0.5,1,0)
+
+# Misclassification error
+misclass <- mean(pred != newtrain_titanic$survived)
+misclass
+```
+The accuracy of the model is 78.51%
+The misclassification error of the model is 0.2148997 
+
+###  Predicting the survival of passengers for each observation in the test data using the new model. Saving these predictions as 'yhat2'.
+```{r}
+#Predicting the survival of passengers for test data
+yhat2 <- predict(m3, newdata = newtest_titanic, type="response")
+
+#Setting threshold as 0.5
+p2 <- yhat2 > 0.5
+
+#Create confusion matrix
+table(newtest_titanic$survived, p2)
+
+#Calculating accuracy of the model
+(135+78)/nrow(newtest_titanic)
+```
+The acccuracy of this model is 81.29%
+
+### Using all the variables in the model to make a better model to improve the accuracy of testing
+data. Experimenting with different combinations, and reporting the best model I could come up with.
+
+```{r}
+#Try first model
+m4 <- glm(survived ~ pclass + titles + sex, data=newtrain_titanic, family=binomial())
+
+#Predicting the survival of passengers for test data
+y1 <- predict(m4, newdata = newtest_titanic, type="response")
+
+#Setting threshold as 0.5
+p3 <- y1 > 0.5
+
+#Create confusion matrix
+table(newtest_titanic$survived, p3)
+
+#Calculating accuracy of the model
+(136+78)/nrow(newtest_titanic)
+
+#Try second model
+m5 <- glm(survived ~ pclass + titles + sibsp + parch, data=newtrain_titanic, family=binomial())
+
+#Predicting the survival of passengers for test data
+y2 <- predict(m5, newdata = newtest_titanic, type="response")
+
+#Setting threshold as 0.5
+p4 <- y2 > 0.5
+
+#Create confusion matrix
+table(newtest_titanic$survived, p4)
+
+#Calculating accuracy of the model
+(139+74)/nrow(newtest_titanic)
+```
+The accuracy of the above model as 81.67% and 81.29%
+So the best logistic regression model I came up with is the one with accuracy as 81.67% 
+It includes variables as pclass , titles and sex.
+
+### Using Linear Probability Model and re-fitting the best logistic regression model I did
+above.  Computing and plotting the residual errors and predicted probabilities(on the training data).  Do the predicitons lie in [0,1] range?
+
+```{r}
+#Create linear regression model
+m6 <- lm(survived ~ pclass + titles + sex, data=newtrain_titanic)
+
+#Predict the survival of passengers
+y3 <- predict(m6, type="response")
+
+#Plot residuals of the model
+hist(resid(m6), border="blue", col="lightgreen", main="Histogram of Residuals")
+
+#Plot predicted probabilities
+hist(y3,  xlab="Predicted Probabilities", col="lightblue", , main="Histogram of Predicted Probabilities")
+
+```
+The plot of residual errors looks approximately normal.
+
+From the plot, it can be observed that predicitons lie in [0, 1] range.
+
+### Making predictions on the test set using this model.Saving these predictions as 'yhat3'.  Computing confusion matrix and comparing it with that of my best logistic model. Which one is better?
+```{r}
+#Prediction of survival on test data
+yhat3 <- predict(m6, newdata = newtest_titanic, type="response")
+
+#Set threshold as 0.5
+p5 <- yhat3 > 0.5
+
+#Creating confusion matrix
+table(newtest_titanic$survived, p5)
+
+#Checking accuracy
+(139+78)/nrow(newtest_titanic)
+```
+The accuracy of linear regression model is 82.82%, which is better than the best logistic regression model we created above.  
+
+Implementing ROC curve from scratch.
+   
+```{r}
+#Creating a model
+m8 <- glm(survived ~ pclass + titles, data=newtrain_titanic, family=binomial())
+
+#Create vector for sensitivity
+sens = c()
+#Create vector for specificity
+specs  = c()
+#For loop to calculate sensitivity and specificity
+for(value in (1:9)){
+#Set different thresholds
+pro <- yhat3 > (0.1)*value
+
+#Calculate false negative value
+FN <- table(newtest_titanic$survived, pro)[1,1]
+
+#Calculate true negative value
+TN <- table(newtest_titanic$survived, pro)[1,2]
+
+#Calculate false positive value
+FP <- table(newtest_titanic$survived, pro)[2,1]
+
+#Calculate true positive value
+TP <- table(newtest_titanic$survived, pro)[2,2]
+
+#Calculate sensitivity
+sens1 = TP/(TP+FN)
+
+#Calculate specificity
+spec1 = FP/(FP+TN)
+
+#Add sensitivity in the vector
+sens = c(sens, sens1)
+
+#Add specificity in the vector
+specs  = c(specs, spec1)
+}
+
+#Create a data frame having sensitivity and specificity
+roc_calculate = data.frame(sens, specs)
+
+#Create ROC curve using sensitivity and specificity
+ggplot(roc_calculate, aes(x=specs, y=sens)) + geom_point()  + xlim(1, 0.0) + xlab("Specificity") + ylab("Sensitivity") + ggtitle("ROC")
+```
