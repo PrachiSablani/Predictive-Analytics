@@ -1,4 +1,4 @@
-** In this project I will use the 'flights' and 'titanic' datasets. The flights dataset contains information on flight delays and weather. Titanic text file contains data about the survival of passengers aboard the Titanic. **
+**In this project I will use the 'flights' and 'titanic' datasets. The flights dataset contains information on flight delays and weather. Titanic text file contains data about the survival of passengers aboard the Titanic.**
 ```{r, show='hide'}
 # Load standard libraries
 library(tidyverse)
@@ -156,7 +156,7 @@ Thus, the performance on test data has not improved significantly.<br>
 
 The variables included in this model are origin, temperature, wind speed, precipitation, visibility, carrier and dewpoint. 
 
-** ## Predictions with a categorical output (classification) **
+**## Predictions with a categorical output (classification)**
 
 ### Loading the titanic data. Splitting the data into a training and test set based on an 80-20 split. In other words, 80% of the observations will be in the training set and 20% will be in the test set.
 
